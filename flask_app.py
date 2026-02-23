@@ -691,7 +691,7 @@ BASE_HTML_TEMPLATE = """
                 {% else %}
                     text-gray-400 hover:text-purple-400 hover:bg-white/5 border border-transparent
                 {% endif %}">
-                <i class="fa-solid fa-ghost"></i> <span class="poly-tooltip">Inicio <span class="key-hint">AltGr+1</span></span>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="display:inline-block;vertical-align:middle"><path d="M9 1.5C5.41 1.5 2.5 4.41 2.5 8v8l2.25-2.25 2.25 2.25L9 13.75l2 2.5 2-2.5 2.25 2.25V8C15.5 4.41 12.59 1.5 9 1.5z" fill="#c084fc"/><circle cx="6.8" cy="8.2" r="1.15" fill="#2d1b53"/><circle cx="11.2" cy="8.2" r="1.15" fill="#2d1b53"/><circle cx="7.15" cy="7.85" r="0.45" fill="#f3e8ff"/><circle cx="11.55" cy="7.85" r="0.45" fill="#f3e8ff"/></svg> <span class="poly-tooltip">Inicio <span class="key-hint">AltGr+1</span></span>
             </a>
         </div>
 
@@ -705,7 +705,7 @@ BASE_HTML_TEMPLATE = """
                 {% else %}
                     text-gray-400 hover:text-yellow-400 hover:bg-white/5 border border-transparent
                 {% endif %}">
-                <i class="fa-solid fa-calendar-days"></i> <span class="poly-tooltip text-yellow-400">Calendario <span class="key-hint">AltGr+2</span></span>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="display:inline-block;vertical-align:middle"><rect x="2" y="4.5" width="14" height="11.5" rx="2" fill="#1a1c2b" stroke="#facc15" stroke-width="1"/><rect x="2" y="4.5" width="14" height="4.5" rx="1" fill="#facc15"/><rect x="5.5" y="2" width="1.8" height="3.5" rx="0.9" fill="#facc15"/><rect x="10.7" y="2" width="1.8" height="3.5" rx="0.9" fill="#facc15"/><rect x="4" y="11" width="2.5" height="1.8" rx="0.5" fill="#facc15" opacity="0.55"/><rect x="7.75" y="11" width="2.5" height="1.8" rx="0.5" fill="#facc15" opacity="0.55"/><rect x="11.5" y="11" width="2.5" height="1.8" rx="0.5" fill="#facc15" opacity="0.55"/></svg> <span class="poly-tooltip text-yellow-400">Calendario <span class="key-hint">AltGr+2</span></span>
             </a>
 
             <a href="{{ url_for('agenda') }}" class="group relative w-10 h-10 flex items-center justify-center rounded-2xl transition-all
@@ -714,7 +714,7 @@ BASE_HTML_TEMPLATE = """
                 {% else %}
                     text-gray-400 hover:text-indigo-300 hover:bg-white/5 border border-transparent
                 {% endif %}">
-                <i class="fa-solid fa-book-bookmark"></i> <span class="poly-tooltip text-indigo-300">Agenda <span class="key-hint">AltGr+3</span></span>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="display:inline-block;vertical-align:middle"><rect x="3" y="2" width="11" height="14" rx="1.5" fill="#818cf8"/><rect x="5" y="5" width="7" height="1" rx="0.5" fill="white" opacity="0.9"/><rect x="5" y="7.5" width="7" height="1" rx="0.5" fill="white" opacity="0.9"/><rect x="5" y="10" width="5" height="1" rx="0.5" fill="white" opacity="0.65"/><path d="M11 2v5.8l1.8-1.4L14.6 7.8V2z" fill="#6366f1"/></svg> <span class="poly-tooltip text-indigo-300">Agenda <span class="key-hint">AltGr+3</span></span>
             </a>
 
             <a href="{{ url_for('horario') }}" class="group relative w-10 h-10 flex items-center justify-center rounded-2xl transition-all
@@ -723,7 +723,7 @@ BASE_HTML_TEMPLATE = """
                 {% else %}
                     text-gray-400 hover:text-orange-400 hover:bg-white/5 border border-transparent
                 {% endif %}">
-                <i class="fa-solid fa-table-cells"></i> <span class="poly-tooltip text-orange-400">Horario <span class="key-hint">AltGr+4</span></span>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="display:inline-block;vertical-align:middle"><rect x="2" y="2" width="14" height="14" rx="2" fill="#1a1c2b" stroke="#fb923c" stroke-width="1"/><rect x="2" y="2" width="14" height="4.5" rx="1" fill="#fb923c" opacity="0.85"/><line x1="9" y1="2" x2="9" y2="16" stroke="#fb923c" stroke-width="0.85" opacity="0.4"/><line x1="2" y1="9.5" x2="16" y2="9.5" stroke="#fb923c" stroke-width="0.85" opacity="0.4"/><rect x="3" y="10.5" width="4.5" height="1.8" rx="0.5" fill="#fb923c" opacity="0.35"/><rect x="10.5" y="10.5" width="4.5" height="1.8" rx="0.5" fill="#fb923c" opacity="0.35"/><rect x="3" y="13" width="4.5" height="1.5" rx="0.5" fill="#fb923c" opacity="0.25"/><rect x="10.5" y="13" width="4.5" height="1.5" rx="0.5" fill="#fb923c" opacity="0.25"/></svg> <span class="poly-tooltip text-orange-400">Horario <span class="key-hint">AltGr+4</span></span>
             </a>
 
             <a href="{{ url_for('chat') }}" class="group relative w-10 h-10 flex items-center justify-center rounded-2xl transition-all
@@ -732,7 +732,7 @@ BASE_HTML_TEMPLATE = """
                 {% else %}
                     text-gray-400 hover:text-cyan-400 hover:bg-white/5 border border-transparent
                 {% endif %}">
-                <i class="fa-solid fa-comments"></i> <span class="poly-tooltip text-cyan-400">Chat grupal</span>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="display:inline-block;vertical-align:middle"><path d="M2 3a1.5 1.5 0 011.5-1.5H12A1.5 1.5 0 0113.5 3v5.5A1.5 1.5 0 0112 10H6.5L3.5 12.5V3z" fill="#22d3ee"/><path d="M6 9h8.5A1.5 1.5 0 0116 10.5v4A1.5 1.5 0 0114.5 16H10L7.5 17.5V10.5A1.5 1.5 0 016 9z" fill="#0e7490"/><circle cx="7" cy="6" r="0.9" fill="white"/><circle cx="9.5" cy="6" r="0.9" fill="white"/><circle cx="12" cy="6" r="0.9" fill="white"/></svg> <span class="poly-tooltip text-cyan-400">Chat grupal</span>
             </a>
 
             <a href="{{ url_for('private_zone') }}" class="group relative w-10 h-10 flex items-center justify-center rounded-2xl transition-all
@@ -742,7 +742,7 @@ BASE_HTML_TEMPLATE = """
                     text-gray-400 hover:text-pink-400 hover:bg-white/5 border border-transparent
                 {% endif %}">
                 {% if session.get('private_user') %}<span class="absolute top-2 right-2 w-2 h-2 bg-pink-500 rounded-full animate-pulse"></span>{% endif %}
-                <i class="fa-solid fa-lock"></i> <span class="poly-tooltip text-pink-400">Privado <span class="key-hint">AltGr+5</span></span>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="display:inline-block;vertical-align:middle"><path d="M5.5 8V5.5a3.5 3.5 0 017 0V8" stroke="#f9a8d4" stroke-width="1.5" stroke-linecap="round" fill="none"/><rect x="3" y="8" width="12" height="8.5" rx="2" fill="#ec4899"/><circle cx="9" cy="12" r="1.8" fill="#fce7f3"/><rect x="8.3" y="12.5" width="1.4" height="2" rx="0.7" fill="#ec4899"/></svg> <span class="poly-tooltip text-pink-400">Privado <span class="key-hint">AltGr+5</span></span>
             </a>
 
             <a href="{{ url_for('admin') }}" class="group relative w-10 h-10 flex items-center justify-center rounded-2xl transition-all
@@ -752,20 +752,20 @@ BASE_HTML_TEMPLATE = """
                     text-gray-400 hover:text-green-400 hover:bg-white/5 border border-transparent
                 {% endif %}">
                  {% if session.get('logged_in') %}<span class="absolute top-2 right-2 w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>{% endif %}
-                <i class="fa-solid fa-terminal"></i> <span class="poly-tooltip text-green-400">Admin <span class="key-hint">AltGr+6</span></span>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="display:inline-block;vertical-align:middle"><rect x="1.5" y="2.5" width="15" height="13" rx="2" fill="#052e16"/><rect x="1.5" y="2.5" width="15" height="4" rx="1" fill="#166534"/><circle cx="4.5" cy="4.5" r="0.9" fill="#f87171"/><circle cx="7" cy="4.5" r="0.9" fill="#facc15"/><circle cx="9.5" cy="4.5" r="0.9" fill="#4ade80"/><path d="M3.5 9.5l2 1.5-2 1.5" stroke="#4ade80" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" fill="none"/><line x1="8" y1="12.5" x2="13.5" y2="12.5" stroke="#4ade80" stroke-width="1.15" stroke-linecap="round" opacity="0.6"/></svg> <span class="poly-tooltip text-green-400">Admin <span class="key-hint">AltGr+6</span></span>
             </a>
         </div>
 
         <div class="poly-actions-sep" style="display:flex;">
             <button onclick="toggleShortcuts()" class="group w-10 h-10 flex items-center justify-center rounded-2xl text-gray-600 hover:text-white transition-all relative">
-                <i class="fa-solid fa-keyboard"></i> <span class="poly-tooltip">Atajos <span class="key-hint">?</span></span>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="display:inline-block;vertical-align:middle"><rect x="1" y="5" width="16" height="8" rx="1.5" fill="#374151" stroke="#4b5563" stroke-width="0.8"/><rect x="2.5" y="6.5" width="2" height="1.5" rx="0.4" fill="#9ca3af"/><rect x="5.5" y="6.5" width="2" height="1.5" rx="0.4" fill="#9ca3af"/><rect x="8.5" y="6.5" width="2" height="1.5" rx="0.4" fill="#9ca3af"/><rect x="11.5" y="6.5" width="2" height="1.5" rx="0.4" fill="#9ca3af"/><rect x="2.5" y="9" width="2" height="1.5" rx="0.4" fill="#9ca3af"/><rect x="5.5" y="9" width="2" height="1.5" rx="0.4" fill="#9ca3af"/><rect x="8.5" y="9" width="2" height="1.5" rx="0.4" fill="#a855f7"/><rect x="11.5" y="9" width="2" height="1.5" rx="0.4" fill="#9ca3af"/><rect x="4" y="11.5" width="10" height="1.5" rx="0.7" fill="#6b7280"/></svg> <span class="poly-tooltip">Atajos <span class="key-hint">?</span></span>
             </button>
             <button onclick="toggleSettings()" class="group w-10 h-10 flex items-center justify-center rounded-2xl text-gray-600 hover:text-purple-400 transition-all relative" id="settingsBtn">
-                <i class="fa-solid fa-gear"></i> <span class="poly-tooltip text-purple-400">Configuración</span>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="display:inline-block;vertical-align:middle"><path d="M9 1.5l1.5 1.8h2.2L14 4.8l-1 2 1 2 -1.3 1.5h-2.2L9 12l-1.5-1.7H5.3L4 8.8l1-2-1-2 1.3-1.5h2.2z" fill="#a855f7" opacity="0.3"/><path d="M7.4 1.5H10.6l.6 2.1 1.9-.6 2.3 2.3-.7 1.8 1.9.7v3.2l-1.9.7.7 1.8-2.3 2.3-1.9-.6-.6 2.1H7.4l-.6-2.1-1.9.6-2.3-2.3.7-1.8-1.9-.7V7.8l1.9-.7-.7-1.8 2.3-2.3 1.9.6z" fill="#a855f7"/><circle cx="9" cy="9" r="2.8" fill="#1a1c2b"/><circle cx="9" cy="9" r="1.2" fill="#a855f7"/></svg> <span class="poly-tooltip text-purple-400">Configuración</span>
             </button>
             {% if session.get('logged_in') or session.get('private_user') %}
             <a href="{{ url_for('logout') }}" class="group w-10 h-10 flex items-center justify-center rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white hover:shadow-[0_0_15px_rgba(239,68,68,0.5)] transition-all duration-300 relative">
-                <i class="fa-solid fa-power-off"></i> <span class="poly-tooltip text-red-400">Salir</span>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="display:inline-block;vertical-align:middle"><path d="M5.5 4.5A6.5 6.5 0 1012.5 4.5" stroke="#ef4444" stroke-width="1.7" stroke-linecap="round" fill="none"/><line x1="9" y1="1.5" x2="9" y2="9" stroke="white" stroke-width="1.7" stroke-linecap="round"/></svg> <span class="poly-tooltip text-red-400">Salir</span>
             </a>
             {% endif %}
         </div>
