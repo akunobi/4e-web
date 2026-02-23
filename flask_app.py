@@ -15,16 +15,6 @@ app.config['TEMPLATES_AUTO_RELOAD']       = False   # no recargar plantillas en 
 app.jinja_env.auto_reload                 = False
 app.jinja_env.cache_size                  = 400     # cachear hasta 400 plantillas compiladas
 
-# --- NUEVAS CONSTANTES PARA CHAT ---
-CHAT_FILE = 'chat.json'
-UPLOAD_FOLDER = 'chat_uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# --- LISTENER GLOBAL PARA SSE DEL CHAT ---
-_chat_listeners = []
-_chat_listeners_lock = threading.Lock()
-
 # Cache de render_template_string: evita recompilar Jinja2 en cada request
 from jinja2 import Environment
 _tpl_cache: dict = {}
@@ -101,6 +91,14 @@ def kick_user(username):
 PAGES_FILE = 'pages.json'
 EVENTS_FILE = 'events.json'
 AGENDA_FILE = 'agenda.json'
+CHAT_FILE   = 'chat.json'
+UPLOAD_FOLDER = 'chat_uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # --- CONFIGURACIÓN VISUAL ---
 THEME_COLORS = {
@@ -136,35 +134,41 @@ def load_events(): return load_json(EVENTS_FILE)
 def save_events(events): save_json(EVENTS_FILE, events)
 def load_agenda(): return load_json(AGENDA_FILE)
 def save_agenda(notes): save_json(AGENDA_FILE, notes)
-
-# --- FUNCIONES PARA CHAT ---
 def load_chat():
-    return load_json(CHAT_FILE)
-
+    if not os.path.exists(CHAT_FILE): return []
+    try:
+        with open(CHAT_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+    except: return []
 def save_chat(messages):
-    save_json(CHAT_FILE, messages)
+    with open(CHAT_FILE, 'w', encoding='utf-8') as f: json.dump(messages, f, indent=2, ensure_ascii=False)
 
 def maybe_saturday_cleanup():
-    """Borra mensajes de más de 7 días cada sábado."""
-    if datetime.datetime.today().weekday() != 5:  # 5 = sábado
-        return
+    """Each Saturday, delete messages older than 7 days."""
+    if datetime.datetime.utcnow().weekday() != 5: return
+    cutoff = (datetime.datetime.utcnow() - datetime.timedelta(days=7)).isoformat()
     msgs = load_chat()
-    week_ago = (datetime.datetime.utcnow() - datetime.timedelta(days=7)).isoformat()
-    # Conservar mensajes de los últimos 7 días
-    msgs = [m for m in msgs if m.get('ts', '') >= week_ago]
-    save_chat(msgs)
+    changed = False
+    cleaned = []
+    for m in msgs:
+        if m.get('ts', '') < cutoff:
+            if m.get('image'):
+                try: os.remove(os.path.join(UPLOAD_FOLDER, m['image']))
+                except: pass
+            changed = True
+        else:
+            cleaned.append(m)
+    if changed: save_chat(cleaned)
 
-def chat_broadcast(data):
-    """Envía un evento SSE a todos los clientes conectados al chat."""
+# Chat SSE broadcast
+_chat_listeners: list = []
+_chat_listeners_lock = threading.Lock()
+
+def chat_broadcast(data: dict):
+    payload = json.dumps(data, ensure_ascii=False)
     with _chat_listeners_lock:
-        for q in _chat_listeners[:]:
-            try:
-                q.put_nowait(json.dumps(data))
-            except queue.Full:
-                pass
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+        for q in list(_chat_listeners):
+            try: q.put_nowait(payload)
+            except queue.Full: pass
 
 # --- AFTER REQUEST: cabeceras de rendimiento ---
 @app.after_request
@@ -255,6 +259,19 @@ BASE_HTML_TEMPLATE = """
         .animate-enter { animation: fadeInUp 0.4s ease-out forwards; opacity: 0; will-change: transform, opacity; }
         .delay-100 { animation-delay: 0.1s; }
         .delay-200 { animation-delay: 0.2s; }
+
+        /* --- TRICOLOR SUBJECT ICONS --- */
+        .tricolor-icon-wrap {
+            background: linear-gradient(135deg, #f43f5e 0%, #a855f7 50%, #22d3ee 100%);
+            border: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 0 14px rgba(168,85,247,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
+            position: relative; overflow: hidden;
+        }
+        .tricolor-icon-wrap::before {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 60%);
+            border-radius: inherit; pointer-events: none;
+        }
 
         /* --- GLASS & UI --- */
         .glass-panel { background: rgba(26, 28, 40, 0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--glass-border); }
@@ -1564,7 +1581,7 @@ BASE_HTML_TEMPLATE = """
                         ? `¡Bienvenido, ${username}! Tu cuenta ha sido creada.`
                         : `Bienvenido de nuevo, ${username}.`;
                     okEl.classList.remove('hidden');
-                    setTimeout(() => hideAuthWall(), 1200);
+                    setTimeout(() => location.reload(), 1200);
                 } else {
                     errEl.textContent = data.error || 'Error desconocido';
                     errEl.classList.remove('hidden');
@@ -1808,7 +1825,7 @@ AGENDA_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}'
     <div class="glass-panel p-6 rounded-2xl border border-white/10 mb-12 shadow-xl">
         <form method="POST" action="{{ url_for('add_note') }}" class="space-y-4">
             <input type="text" name="title" class="w-full bg-transparent border-b border-white/10 text-xl font-bold text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 py-2 transition-colors" placeholder="Título de la nota..." required>
-            <textarea name="content" class="w-full bg-black/20 rounded-lg p-4 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-y min-h-[150px] custom-scrollbar" placeholder="Escribe aquí tus ideas, recordatorios o tareas..." required></textarea>
+            <textarea name="content" class="w-full bg-black/20 rounded-lg p-4 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-y min-h-[150px] custom-scrollbar" placeholder="Escribe aquí tus ideas, recordatorios o tareas..."></textarea>
             <div class="flex justify-end">
                 <button type="submit" class="px-6 py-2 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-bold text-xs hover:bg-indigo-500 hover:text-white transition-all shadow-lg hover:shadow-indigo-500/30">
                     GUARDAR NOTA <i class="fa-solid fa-floppy-disk ml-2"></i>
@@ -1991,6 +2008,7 @@ HORARIO_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}
 {% endblock %}
 """)
 
+
 # --- INDEX TEMPLATE ---
 INDEX_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}', """
 {% block content %}
@@ -2041,8 +2059,8 @@ INDEX_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}',
             <div class="absolute inset-0 {{ page.color }} blur-3xl opacity-0 group-hover:opacity-40 transition-opacity duration-300 pointer-events-none"></div>
             <a href="{{ url_for('show_page', page_slug=page.slug) }}" class="relative z-10 block h-full flex flex-col">
                 <div class="p-6 flex items-start gap-4 {{ page.color }} bg-opacity-10 group-hover:bg-opacity-50 transition-all border-b border-white/5">
-                    <div class="bg-black/50 w-12 h-12 rounded-xl flex items-center justify-center border border-white/10 group-hover:scale-110 transition-transform">
-                        <i class="{{ page.icon }} text-xl text-white"></i>
+                    <div class="tricolor-icon-wrap w-12 h-12 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i class="{{ page.icon }} text-xl text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.8)]"></i>
                     </div>
                     <div>
                         <h3 class="text-lg font-bold text-white mb-1">{{ page.title }}</h3>
@@ -2100,7 +2118,99 @@ INDEX_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}',
 {% endblock %}
 """)
 
-# --- PAGE DETAIL TEMPLATE ---
+# --- RUTAS PRINCIPALES ---
+@app.route('/')
+def index():
+    pages = load_pages()
+    for p in pages:
+        if 'is_private' not in p: p['is_private'] = False
+    gs_reason = request.args.get('gs_reason','')
+    return render_cached(INDEX_TEMPLATE, title='Inicio', pages=pages, url_for=url_for, session=session, subject_icons=SUBJECT_ICONS, gs_reason=gs_reason)
+
+@app.route('/horario')
+def horario():
+    return render_cached(HORARIO_TEMPLATE, title='Horario', url_for=url_for, session=session, gs_reason='')
+
+
+@app.route('/calendar')
+def calendar_view():
+    today = datetime.date.today()
+    try: year = int(request.args.get('year', today.year)); month = int(request.args.get('month', today.month))
+    except ValueError: year, month = today.year, today.month
+
+    prev_date = datetime.date(year, month, 1) - datetime.timedelta(days=1)
+    next_date = datetime.date(year, month, 28) + datetime.timedelta(days=7); next_date = next_date.replace(day=1)
+    month_names = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
+    cal = calendar.Calendar(firstweekday=0)
+    raw_cal = cal.monthdayscalendar(year, month)
+    all_events = load_events()
+    month_data = []
+
+    for week in raw_cal:
+        week_data = []
+        for day in week:
+            day_events = []
+            if day != 0:
+                date_str = f"{year}-{month:02d}-{day:02d}"
+                day_events = [e for e in all_events if e['date'] == date_str]
+            week_data.append((day, day_events))
+        month_data.append(week_data)
+
+    return render_cached(CALENDAR_TEMPLATE,
+        title='Calendario', year=year, month=month, month_name=month_names[month],
+        prev_year=prev_date.year, prev_month=prev_date.month, next_year=next_date.year, next_month=next_date.month,
+        month_days=month_data, current_day=today.day, current_month=today.month, current_year=today.year,
+        url_for=url_for, session=session)
+
+@app.route('/add_event', methods=['POST'])
+def add_event():
+    import uuid
+    events = load_events()
+    new_event = {
+        'id': str(uuid.uuid4()), 'type': request.form.get('type'), 'title': request.form.get('title'),
+        'date': request.form.get('date'), 'subject': request.form.get('subject', ''), 'description': request.form.get('description', '')
+    }
+    if new_event['type'] == 'nota': new_event['subject'] = ''
+    events.append(new_event)
+    save_events(events)
+    y, m, d = map(int, new_event['date'].split('-'))
+    return redirect(url_for('calendar_view', year=y, month=m))
+
+@app.route('/delete_event/<event_id>')
+def delete_event(event_id):
+    events = load_events()
+    events = [e for e in events if e['id'] != event_id]
+    save_events(events)
+    return redirect(url_for('calendar_view'))
+
+# --- RUTAS DE AGENDA ---
+@app.route('/agenda')
+def agenda():
+    notes = load_agenda()
+    notes.reverse()
+    return render_cached(AGENDA_TEMPLATE, title='Agenda', notes=notes, url_for=url_for, session=session, gs_reason='')
+
+@app.route('/add_note', methods=['POST'])
+def add_note():
+    notes = load_agenda()
+    new_note = {
+        'id': str(uuid.uuid4()),
+        'title': request.form.get('title'),
+        'content': request.form.get('content'),
+        'date': datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    }
+    notes.append(new_note)
+    save_agenda(notes)
+    return redirect(url_for('agenda'))
+
+@app.route('/delete_note/<note_id>')
+def delete_note(note_id):
+    notes = load_agenda()
+    notes = [n for n in notes if n['id'] != note_id]
+    save_agenda(notes)
+    return redirect(url_for('agenda'))
+
 PAGE_DETAIL_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}', """
 {% block content %}
 <div class="max-w-5xl mx-auto animate-enter">
@@ -2130,7 +2240,26 @@ PAGE_DETAIL_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endbloc
 {% endblock %}
 """)
 
-# --- LOGIN TEMPLATE ---
+@app.route('/page/<page_slug>')
+def show_page(page_slug):
+    pages = load_pages()
+    page = next((p for p in pages if p['slug'] == page_slug), None)
+    if not page: return "404 Not Found", 404
+    if page.get('is_private'):
+        current_user = session.get('private_user')
+        is_admin = session.get('logged_in')
+        allowed_users = page.get('allowed_users', [])
+        if not is_admin:
+            if not current_user:
+                return redirect(url_for('index'))
+            u = get_user(current_user)
+            if not u or u.get('banned'):
+                session.clear(); return redirect(url_for('index'))
+            # 'all' means all registered users, else check whitelist
+            if allowed_users and 'all' not in allowed_users and current_user not in allowed_users:
+                return redirect(url_for('private_zone'))
+    return render_cached(PAGE_DETAIL_TEMPLATE, title=page['title'], page=page, url_for=url_for, session=session, gs_reason='')
+
 LOGIN_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}', """
 {% block content %}
 <div class="max-w-sm mx-auto mt-16 animate-enter">
@@ -2152,7 +2281,15 @@ LOGIN_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}',
 {% endblock %}
 """)
 
-# --- ADMIN TEMPLATE ---
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        if request.form.get('username') == ADMIN_USER and check_password_hash(ADMIN_PASS_HASH, request.form.get('password')):
+            session.clear(); session['logged_in'] = True; session['username'] = ADMIN_USER
+            return redirect(url_for('admin'))
+        return render_cached(LOGIN_TEMPLATE, title='Login', error='Acceso Denegado', url_for=url_for, session=session, gs_reason='')
+    return render_cached(LOGIN_TEMPLATE, title='Login', url_for=url_for, session=session, gs_reason='')
+
 ADMIN_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}', """
 {% block content %}
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -2407,7 +2544,58 @@ ADMIN_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}',
 {% endblock %}
 """)
 
-# --- PRIVATE LOGIN TEMPLATE ---
+@app.route('/admin')
+@app.route('/admin/<edit_slug>')
+@admin_required
+def admin(edit_slug=None):
+    pages = load_pages()
+    for p in pages:
+        if 'is_private' not in p: p['is_private'] = False
+        if 'allowed_users' not in p: p['allowed_users'] = []
+    page_to_edit = next((p for p in pages if p['slug'] == edit_slug), None) if edit_slug else None
+    return render_cached(ADMIN_TEMPLATE, title='ADMIN', session=session, theme_colors=THEME_COLORS, private_users=load_users(), pages=pages, edit_page=page_to_edit, url_for=url_for, message=session.pop('message', None), subject_icons=SUBJECT_ICONS, gs_reason='')
+
+@app.route('/add_page', methods=['POST'])
+@admin_required
+def add_page(): return process_page_form(is_update=False)
+
+@app.route('/update_page/<page_slug>', methods=['POST'])
+@admin_required
+def update_page(page_slug): return process_page_form(is_update=True, old_slug=page_slug)
+
+def process_page_form(is_update, old_slug=None):
+    title = request.form.get('title')
+    embed_code = request.form.get('embed_code')
+    subject = request.form.get('subject')
+    icon = request.form.get('icon')
+    color = request.form.get('color')
+    is_private = request.form.get('is_private') == 'on'
+    allowed_users = request.form.getlist('allowed_users')
+
+    if not all([title, embed_code, subject, icon, color]):
+        session['message'] = 'Faltan datos'; return redirect(url_for('admin'))
+
+    pages = load_pages()
+    new_slug = title.lower().replace(' ', '-').replace('/', '')
+    new_page = {'title': title, 'embed_code': embed_code, 'subject': subject, 'icon': icon, 'color': color, 'slug': new_slug, 'is_private': is_private, 'allowed_users': allowed_users}
+
+    if is_update and old_slug:
+        for i, p in enumerate(pages):
+            if p['slug'] == old_slug: pages[i] = new_page; break
+        session['message'] = 'ACTUALIZADO'
+    else:
+        pages.append(new_page); session['message'] = 'CREADO'
+
+    save_pages(pages)
+    return redirect(url_for('admin'))
+
+@app.route('/delete_page/<page_slug>')
+@admin_required
+def delete_page(page_slug):
+    save_pages([p for p in load_pages() if p['slug'] != page_slug])
+    session['message'] = 'ELIMINADO'
+    return redirect(url_for('admin'))
+
 PRIVATE_LOGIN_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}', """
 {% block content %}
 <div class="max-w-sm mx-auto mt-16 animate-enter">
@@ -2427,7 +2615,117 @@ PRIVATE_LOGIN_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endbl
 {% endblock %}
 """)
 
-# --- PRIVATE ZONE TEMPLATE ---
+# ─────────────────────────────────────────────────────────
+# API ENDPOINTS — auth y SSE
+# ─────────────────────────────────────────────────────────
+
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    ok, msg = register_user(username, password)
+    if ok:
+        session['private_user'] = username
+        session['login_ts'] = datetime.datetime.utcnow().timestamp()
+        session.permanent = True
+        return jsonify({'ok': True})
+    return jsonify({'ok': False, 'error': msg}), 400
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    u = get_user(username)
+    if not u:
+        return jsonify({'ok': False, 'error': 'Usuario no encontrado. ¿Te has registrado ya?'}), 401
+    if u.get('banned'):
+        return jsonify({'ok': False, 'error': 'Tu acceso ha sido revocado.'}), 403
+    if not check_password_hash(u['hash'], password):
+        return jsonify({'ok': False, 'error': 'Contraseña incorrecta'}), 401
+    session['private_user'] = username
+    session['login_ts'] = datetime.datetime.utcnow().timestamp()
+    session.permanent = True
+    return jsonify({'ok': True})
+
+@app.route('/api/sse/<username>')
+def api_sse(username):
+    """Server-Sent Events stream per user."""
+    def stream():
+        q = get_sse_queue(username)
+        # Send initial ping
+        yield 'data: {"type":"ping"}\n\n'
+        while True:
+            try:
+                msg = q.get(timeout=20)
+                yield f'data: {json.dumps(msg)}\n\n'
+            except queue.Empty:
+                yield 'data: {"type":"ping"}\n\n'
+    return Response(stream(), mimetype='text/event-stream',
+                    headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
+
+@app.route('/api/admin/send_message', methods=['POST'])
+@admin_required
+def api_send_message():
+    data = request.get_json(silent=True) or {}
+    username = data.get('username')
+    text = (data.get('text') or '').strip()
+    if not username or not text:
+        return jsonify({'ok': False, 'error': 'Datos incompletos'}), 400
+    push_message(username, text)
+    return jsonify({'ok': True})
+
+@app.route('/api/admin/kick', methods=['POST'])
+@admin_required
+def api_kick():
+    data = request.get_json(silent=True) or {}
+    username = data.get('username')
+    if not username:
+        return jsonify({'ok': False}), 400
+    kick_user(username)
+    users = load_users()
+    if username in users:
+        users[username]['banned'] = True
+        save_users(users)
+    return jsonify({'ok': True})
+
+@app.route('/api/admin/unban', methods=['POST'])
+@admin_required
+def api_unban():
+    data = request.get_json(silent=True) or {}
+    username = data.get('username')
+    users = load_users()
+    if username in users:
+        users[username]['banned'] = False
+        save_users(users)
+    return jsonify({'ok': True})
+
+@app.route('/api/admin/delete_user', methods=['POST'])
+@admin_required
+def api_delete_user():
+    data = request.get_json(silent=True) or {}
+    username = data.get('username')
+    users = load_users()
+    if username in users:
+        del users[username]
+        save_users(users)
+    return jsonify({'ok': True})
+
+# ─────────────────────────────────────────────────────────
+# AUTH WALL page (for ?gs_reason= redirects)
+# ─────────────────────────────────────────────────────────
+@app.route('/auth_wall')
+def auth_wall():
+    reason = request.args.get('reason','')
+    # Just redirect to index with gs_reason param so modal picks it up
+    return redirect(url_for('index', gs_reason=reason))
+
+# Legacy private_login kept for backward compat — redirects to auth wall
+@app.route('/private_login', methods=['GET', 'POST'])
+def private_login():
+    return redirect(url_for('index'))
+
 PRIVATE_ZONE_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}', """
 {% block content %}
 <main class="animate-enter">
@@ -2461,7 +2759,24 @@ PRIVATE_ZONE_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblo
 {% endblock %}
 """)
 
-# --- CHAT TEMPLATE (igual al original, no se muestra por brevedad pero está incluido) ---
+@app.route('/private')
+@private_required
+def private_zone():
+    user = session.get('private_user')
+    all_pages = load_pages()
+    # Show pages where allowed_users contains the user's name, or 'all'
+    my_pages = [p for p in all_pages if p.get('is_private') and
+                ('all' in p.get('allowed_users', []) or user in p.get('allowed_users', []))]
+    return render_cached(PRIVATE_ZONE_TEMPLATE, title='Zona Privada', pages=my_pages, url_for=url_for, session=session, gs_reason='')
+
+@app.route('/logout')
+def logout(): session.clear(); return redirect(url_for('index'))
+
+
+# ═══════════════════════════════════════════════════════
+# CHAT
+# ═══════════════════════════════════════════════════════
+
 CHAT_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}', """{% block content %}
 <style>
 /* ── CHAT LAYOUT ───────────────────────────────────── */
@@ -2990,301 +3305,8 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 {% endblock %}""")
 
-# --- RUTAS PRINCIPALES (sin cambios excepto las correcciones ya aplicadas) ---
-@app.route('/')
-def index():
-    pages = load_pages()
-    for p in pages:
-        if 'is_private' not in p: p['is_private'] = False
-    gs_reason = request.args.get('gs_reason','')
-    return render_cached(INDEX_TEMPLATE, title='Inicio', pages=pages, url_for=url_for, session=session, subject_icons=SUBJECT_ICONS, gs_reason=gs_reason)
+# ─── CHAT ROUTES ────────────────────────────────────────────
 
-@app.route('/horario')
-def horario():
-    return render_cached(HORARIO_TEMPLATE, title='Horario', url_for=url_for, session=session, gs_reason='')
-
-@app.route('/calendar')
-def calendar_view():
-    today = datetime.date.today()
-    try: year = int(request.args.get('year', today.year)); month = int(request.args.get('month', today.month))
-    except ValueError: year, month = today.year, today.month
-
-    prev_date = datetime.date(year, month, 1) - datetime.timedelta(days=1)
-    next_date = datetime.date(year, month, 28) + datetime.timedelta(days=7); next_date = next_date.replace(day=1)
-    month_names = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-
-    cal = calendar.Calendar(firstweekday=0)
-    raw_cal = cal.monthdayscalendar(year, month)
-    all_events = load_events()
-    month_data = []
-
-    for week in raw_cal:
-        week_data = []
-        for day in week:
-            day_events = []
-            if day != 0:
-                date_str = f"{year}-{month:02d}-{day:02d}"
-                day_events = [e for e in all_events if e['date'] == date_str]
-            week_data.append((day, day_events))
-        month_data.append(week_data)
-
-    return render_cached(CALENDAR_TEMPLATE,
-        title='Calendario', year=year, month=month, month_name=month_names[month],
-        prev_year=prev_date.year, prev_month=prev_date.month, next_year=next_date.year, next_month=next_date.month,
-        month_days=month_data, current_day=today.day, current_month=today.month, current_year=today.year,
-        url_for=url_for, session=session)
-
-@app.route('/add_event', methods=['POST'])
-def add_event():
-    import uuid
-    events = load_events()
-    new_event = {
-        'id': str(uuid.uuid4()), 'type': request.form.get('type'), 'title': request.form.get('title'),
-        'date': request.form.get('date'), 'subject': request.form.get('subject', ''), 'description': request.form.get('description', '')
-    }
-    # Validar fecha
-    try:
-        y, m, d = map(int, new_event['date'].split('-'))
-    except (ValueError, AttributeError):
-        return "Fecha inválida", 400
-    if new_event['type'] == 'nota': new_event['subject'] = ''
-    events.append(new_event)
-    save_events(events)
-    return redirect(url_for('calendar_view', year=y, month=m))
-
-@app.route('/delete_event/<event_id>')
-def delete_event(event_id):
-    events = load_events()
-    events = [e for e in events if e['id'] != event_id]
-    save_events(events)
-    return redirect(url_for('calendar_view'))
-
-# --- RUTAS DE AGENDA ---
-@app.route('/agenda')
-def agenda():
-    notes = load_agenda()
-    notes.reverse()
-    return render_cached(AGENDA_TEMPLATE, title='Agenda', notes=notes, url_for=url_for, session=session, gs_reason='')
-
-@app.route('/add_note', methods=['POST'])
-def add_note():
-    title = request.form.get('title', '').strip()
-    content = request.form.get('content', '').strip()
-    if not title or not content:
-        return "El título y contenido no pueden estar vacíos", 400
-    notes = load_agenda()
-    new_note = {
-        'id': str(uuid.uuid4()),
-        'title': title,
-        'content': content,
-        'date': datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-    }
-    notes.append(new_note)
-    save_agenda(notes)
-    return redirect(url_for('agenda'))
-
-@app.route('/delete_note/<note_id>')
-def delete_note(note_id):
-    notes = load_agenda()
-    notes = [n for n in notes if n['id'] != note_id]
-    save_agenda(notes)
-    return redirect(url_for('agenda'))
-
-@app.route('/page/<page_slug>')
-def show_page(page_slug):
-    pages = load_pages()
-    page = next((p for p in pages if p['slug'] == page_slug), None)
-    if not page: return "404 Not Found", 404
-    if page.get('is_private'):
-        current_user = session.get('private_user')
-        is_admin = session.get('logged_in')
-        allowed_users = page.get('allowed_users', [])
-        if not is_admin:
-            if not current_user:
-                return redirect(url_for('index'))
-            u = get_user(current_user)
-            if not u or u.get('banned'):
-                session.clear(); return redirect(url_for('index'))
-            if allowed_users and 'all' not in allowed_users and current_user not in allowed_users:
-                return redirect(url_for('private_zone'))
-    return render_cached(PAGE_DETAIL_TEMPLATE, title=page['title'], page=page, url_for=url_for, session=session, gs_reason='')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        if request.form.get('username') == ADMIN_USER and check_password_hash(ADMIN_PASS_HASH, request.form.get('password')):
-            session.clear(); session['logged_in'] = True; session['username'] = ADMIN_USER
-            return redirect(url_for('admin'))
-        return render_cached(LOGIN_TEMPLATE, title='Login', error='Acceso Denegado', url_for=url_for, session=session, gs_reason='')
-    return render_cached(LOGIN_TEMPLATE, title='Login', url_for=url_for, session=session, gs_reason='')
-
-@app.route('/admin')
-@app.route('/admin/<edit_slug>')
-@admin_required
-def admin(edit_slug=None):
-    pages = load_pages()
-    for p in pages:
-        if 'is_private' not in p: p['is_private'] = False
-        if 'allowed_users' not in p: p['allowed_users'] = []
-    page_to_edit = next((p for p in pages if p['slug'] == edit_slug), None) if edit_slug else None
-    return render_cached(ADMIN_TEMPLATE, title='ADMIN', session=session, theme_colors=THEME_COLORS, private_users=load_users(), pages=pages, edit_page=page_to_edit, url_for=url_for, message=session.pop('message', None), subject_icons=SUBJECT_ICONS, gs_reason='')
-
-@app.route('/add_page', methods=['POST'])
-@admin_required
-def add_page(): return process_page_form(is_update=False)
-
-@app.route('/update_page/<page_slug>', methods=['POST'])
-@admin_required
-def update_page(page_slug): return process_page_form(is_update=True, old_slug=page_slug)
-
-def process_page_form(is_update, old_slug=None):
-    title = request.form.get('title')
-    embed_code = request.form.get('embed_code')
-    subject = request.form.get('subject')
-    icon = request.form.get('icon')
-    color = request.form.get('color')
-    is_private = request.form.get('is_private') == 'on'
-    allowed_users = request.form.getlist('allowed_users')
-
-    if not all([title, embed_code, subject, icon, color]):
-        session['message'] = 'Faltan datos'; return redirect(url_for('admin'))
-
-    pages = load_pages()
-    new_slug = title.lower().replace(' ', '-').replace('/', '')
-    new_page = {'title': title, 'embed_code': embed_code, 'subject': subject, 'icon': icon, 'color': color, 'slug': new_slug, 'is_private': is_private, 'allowed_users': allowed_users}
-
-    if is_update and old_slug:
-        for i, p in enumerate(pages):
-            if p['slug'] == old_slug: pages[i] = new_page; break
-        session['message'] = 'ACTUALIZADO'
-    else:
-        pages.append(new_page); session['message'] = 'CREADO'
-
-    save_pages(pages)
-    return redirect(url_for('admin'))
-
-@app.route('/delete_page/<page_slug>')
-@admin_required
-def delete_page(page_slug):
-    save_pages([p for p in load_pages() if p['slug'] != page_slug])
-    session['message'] = 'ELIMINADO'
-    return redirect(url_for('admin'))
-
-@app.route('/private_login', methods=['GET', 'POST'])
-def private_login():
-    return redirect(url_for('index'))
-
-@app.route('/private')
-@private_required
-def private_zone():
-    user = session.get('private_user')
-    all_pages = load_pages()
-    my_pages = [p for p in all_pages if p.get('is_private') and
-                ('all' in p.get('allowed_users', []) or user in p.get('allowed_users', []))]
-    return render_cached(PRIVATE_ZONE_TEMPLATE, title='Zona Privada', pages=my_pages, url_for=url_for, session=session, gs_reason='')
-
-@app.route('/logout')
-def logout(): session.clear(); return redirect(url_for('index'))
-
-# --- API ENDPOINTS (auth y SSE) ---
-@app.route('/api/register', methods=['POST'])
-def api_register():
-    data = request.get_json(silent=True) or {}
-    username = (data.get('username') or '').strip()
-    password = data.get('password') or ''
-    ok, msg = register_user(username, password)
-    if ok:
-        session['private_user'] = username
-        session['login_ts'] = datetime.datetime.utcnow().timestamp()
-        session.permanent = True
-        return jsonify({'ok': True})
-    return jsonify({'ok': False, 'error': msg}), 400
-
-@app.route('/api/login', methods=['POST'])
-def api_login():
-    data = request.get_json(silent=True) or {}
-    username = (data.get('username') or '').strip()
-    password = data.get('password') or ''
-    u = get_user(username)
-    if not u:
-        return jsonify({'ok': False, 'error': 'Usuario no encontrado. ¿Te has registrado ya?'}), 401
-    if u.get('banned'):
-        return jsonify({'ok': False, 'error': 'Tu acceso ha sido revocado.'}), 403
-    if not check_password_hash(u['hash'], password):
-        return jsonify({'ok': False, 'error': 'Contraseña incorrecta'}), 401
-    session['private_user'] = username
-    session['login_ts'] = datetime.datetime.utcnow().timestamp()
-    session.permanent = True
-    return jsonify({'ok': True})
-
-@app.route('/api/sse/<username>')
-def api_sse(username):
-    """Server-Sent Events stream per user."""
-    def stream():
-        q = get_sse_queue(username)
-        yield 'data: {"type":"ping"}\n\n'
-        while True:
-            try:
-                msg = q.get(timeout=20)
-                yield f'data: {json.dumps(msg)}\n\n'
-            except queue.Empty:
-                yield 'data: {"type":"ping"}\n\n'
-    return Response(stream(), mimetype='text/event-stream',
-                    headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
-
-@app.route('/api/admin/send_message', methods=['POST'])
-@admin_required
-def api_send_message():
-    data = request.get_json(silent=True) or {}
-    username = data.get('username')
-    text = (data.get('text') or '').strip()
-    if not username or not text:
-        return jsonify({'ok': False, 'error': 'Datos incompletos'}), 400
-    push_message(username, text)
-    return jsonify({'ok': True})
-
-@app.route('/api/admin/kick', methods=['POST'])
-@admin_required
-def api_kick():
-    data = request.get_json(silent=True) or {}
-    username = data.get('username')
-    if not username:
-        return jsonify({'ok': False}), 400
-    kick_user(username)
-    users = load_users()
-    if username in users:
-        users[username]['banned'] = True
-        save_users(users)
-    return jsonify({'ok': True})
-
-@app.route('/api/admin/unban', methods=['POST'])
-@admin_required
-def api_unban():
-    data = request.get_json(silent=True) or {}
-    username = data.get('username')
-    users = load_users()
-    if username in users:
-        users[username]['banned'] = False
-        save_users(users)
-    return jsonify({'ok': True})
-
-@app.route('/api/admin/delete_user', methods=['POST'])
-@admin_required
-def api_delete_user():
-    data = request.get_json(silent=True) or {}
-    username = data.get('username')
-    users = load_users()
-    if username in users:
-        del users[username]
-        save_users(users)
-    return jsonify({'ok': True})
-
-@app.route('/auth_wall')
-def auth_wall():
-    reason = request.args.get('reason','')
-    return redirect(url_for('index', gs_reason=reason))
-
-# --- RUTAS DEL CHAT ---
 @app.route('/chat')
 def chat():
     maybe_saturday_cleanup()
@@ -3319,9 +3341,7 @@ def api_chat_send():
         'deleted':   False,
         'read_by':   [user],
     }
-    msgs = load_chat()
-    msgs.append(msg)
-    save_chat(msgs)
+    msgs = load_chat(); msgs.append(msg); save_chat(msgs)
     chat_broadcast({'type':'new','msg':msg})
     return jsonify({'ok':True})
 
@@ -3350,10 +3370,8 @@ def api_chat_delete(msg_id):
     for m in msgs:
         if m['id'] == msg_id and (m['username'] == user or session.get('logged_in')):
             if m.get('image'):
-                try:
-                    os.remove(os.path.join(UPLOAD_FOLDER, m['image']))
-                except OSError:
-                    pass
+                try: os.remove(os.path.join(UPLOAD_FOLDER, m['image']))
+                except: pass
             m['deleted'] = True; m['text'] = ''; m['image'] = None; break
     else: return jsonify({'ok':False,'error':'No autorizado'}), 403
     save_chat(msgs)
@@ -3397,7 +3415,7 @@ def api_chat_stream():
     return Response(stream(), mimetype='text/event-stream',
                     headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
 
-# --- INICIALIZACIÓN DE ARCHIVOS ---
+
 if __name__ == '__main__':
     if not os.path.exists(PAGES_FILE): save_pages([])
     if not os.path.exists(EVENTS_FILE): save_events([])
@@ -3405,4 +3423,6 @@ if __name__ == '__main__':
     if not os.path.exists(USERS_FILE): save_users({})
     if not os.path.exists(CHAT_FILE): save_chat([])
     # threaded=True es esencial: el SSE necesita su propio hilo por usuario.
+    # Sin esto, una conexion SSE bloquea TODA la web para el resto.
+    # debug=False elimina la recompilacion de codigo en cada request.
     app.run(host='0.0.0.0', port=5000, debug=False, threaded=True, use_reloader=False)
