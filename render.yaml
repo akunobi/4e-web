@@ -3,7 +3,7 @@ services:
     name: ghostshell
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn flask_app__5_:app --workers 2 --threads 4 --worker-class gthread --bind 0.0.0.0:$PORT --timeout 120 --keep-alive 5
+    startCommand: gunicorn flask_app:app --workers 2 --threads 4 --worker-class gthread --bind 0.0.0.0:$PORT --timeout 120 --keep-alive 5
     envVars:
       - key: SECRET_KEY
         generateValue: true
