@@ -23,6 +23,9 @@ def render_cached(template_str: str, **kwargs):
     """Como render_template_string pero cachea el objeto Template compilado."""
     if template_str not in _tpl_cache:
         _tpl_cache[template_str] = app.jinja_env.from_string(template_str)
+    # Inyectar request/session para que los condicionales del template (polybar, etc.) funcionen
+    kwargs.setdefault('request', request)
+    kwargs.setdefault('session', session)
     return _tpl_cache[template_str].render(**kwargs)
 
 # --- ADMIN HARDCODED ---
@@ -2780,7 +2783,17 @@ def logout(): session.clear(); return redirect(url_for('index'))
 CHAT_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}', """{% block content %}
 <style>
 /* ── CHAT LAYOUT ───────────────────────────────────── */
-#chat-page { display:flex; flex-direction:column; height:calc(100vh - 10rem); max-width:800px; margin:0 auto; }
+/* Ocultar footer y quitar padding inferior en la página del chat */
+footer { display: none !important; }
+body { overflow: hidden; }
+#main-wrapper { padding-bottom: 0 !important; overflow: hidden; }
+#main-content { height: calc(100vh - 8rem); overflow: hidden; }
+/* Posiciones laterales/inferior de polybar: ajustar altura */
+html[data-polybar-pos="left"] #main-content,
+html[data-polybar-pos="right"] #main-content { height: calc(100vh - 4rem); }
+html[data-polybar-pos="bottom"] #main-content { height: calc(100vh - 4rem); }
+
+#chat-page { display:flex; flex-direction:column; height:100%; max-width:800px; margin:0 auto; }
 #chat-header {
     flex-shrink:0; display:flex; align-items:center; gap:12px;
     padding:1rem 1.25rem;
@@ -2926,10 +2939,10 @@ CHAT_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}', 
 
 /* ── IMAGE PREVIEW ─────────────────────────────────── */
 #img-preview-wrap {
-    display:none; margin-bottom:0.5rem;
+    display:inline-block; margin-bottom:0.5rem;
     padding:0.4rem; background:rgba(255,255,255,0.05); border-radius:10px;
     border:1px solid rgba(255,255,255,0.08);
-    position:relative; display:inline-block;
+    position:relative;
 }
 #img-preview { max-height:80px; border-radius:8px; }
 #img-clear { position:absolute; top:-6px; right:-6px; width:18px; height:18px;
@@ -3030,6 +3043,7 @@ CHAT_TEMPLATE = BASE_HTML_TEMPLATE.replace('{% block content %}{% endblock %}', 
 
 <script>
 const ME = {{ current_user|tojson }};
+const IS_ADMIN = {{ (session.get('logged_in') == True)|tojson }};
 let _allMsgs   = [];
 let _imgFile   = null;
 let _editingId = null;
@@ -3090,10 +3104,11 @@ function renderBubble(m, animate=false) {
         if (m.text)  bodyHtml += `<div class="bubble-text" id="txt-${m.id}">${escHtml(m.text)}${m.edited?'<span style="font-size:0.6rem;opacity:0.45;margin-left:4px">(editado)</span>':''}</div>`;
     }
 
+    const canDelete = isMine || IS_ADMIN;
     const actions = (ME && !del) ? `
         <div class="msg-actions">
             ${isMine && m.text ? `<div class="msg-action-btn" onclick="startEdit('${m.id}')" title="Editar"><i class="fa-solid fa-pencil"></i></div>` : ''}
-            ${isMine ? `<div class="msg-action-btn del" onclick="deleteMsg('${m.id}')" title="Eliminar"><i class="fa-solid fa-trash"></i></div>` : ''}
+            ${canDelete ? `<div class="msg-action-btn del" onclick="deleteMsg('${m.id}')" title="Eliminar"><i class="fa-solid fa-trash"></i></div>` : ''}
             <div class="msg-action-btn" onclick="copyText('${m.id}')" title="Copiar"><i class="fa-solid fa-copy"></i></div>
         </div>` : '';
 
@@ -3169,8 +3184,10 @@ function handleNew(msg) {
 function handleEdit(msg) {
     const idx = _allMsgs.findIndex(m=>m.id===msg.id);
     if (idx!==-1) _allMsgs[idx] = msg;
+    // Si el usuario tenía abierto el editor de este mensaje, cerrarlo
+    if (_editingId === msg.id) cancelEdit(msg.id);
     const txtEl = document.getElementById('txt-'+msg.id);
-    if (txtEl) txtEl.innerHTML = escHtml(msg.text)+'<span style="font-size:0.6rem;opacity:0.45;margin-left:4px">(editado)</span>';
+    if (txtEl && _editingId !== msg.id) txtEl.innerHTML = escHtml(msg.text)+'<span style="font-size:0.6rem;opacity:0.45;margin-left:4px">(editado)</span>';
 }
 function handleDelete(id) {
     const idx = _allMsgs.findIndex(m=>m.id===id);
@@ -3196,7 +3213,10 @@ function handleDelete(id) {
 }
 function handleRead(msg_id, username) {
     const msg = _allMsgs.find(m=>m.id===msg_id);
-    if (msg && !msg.read_by.includes(username)) msg.read_by.push(username);
+    if (msg) {
+        if (!msg.read_by) msg.read_by = [];
+        if (!msg.read_by.includes(username)) msg.read_by.push(username);
+    }
     // Update read avatars in DOM
     const bub = document.getElementById('bub-'+msg_id);
     if (!bub || !msg) return;
@@ -3213,7 +3233,7 @@ function handleRead(msg_id, username) {
 const _markedRead = new Set(); // evita peticiones duplicadas
 function markVisible() {
     if (!ME) return;
-    const unread = _allMsgs.filter(m => !m.deleted && !m.read_by.includes(ME) && !_markedRead.has(m.id));
+    const unread = _allMsgs.filter(m => !m.deleted && !(m.read_by||[]).includes(ME) && !_markedRead.has(m.id));
     unread.forEach(m => {
         _markedRead.add(m.id);
         fetch('/api/chat/read/'+m.id, {method:'POST'});
