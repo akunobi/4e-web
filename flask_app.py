@@ -3147,7 +3147,10 @@ function initChatSSE() {
         else if (d.type === 'read')   handleRead(d.msg_id, d.username);
         else if (d.type === 'online') document.getElementById('online-count').textContent = d.text;
     };
-    es.onerror = () => {};
+    es.onerror = () => {
+        es.close();
+        setTimeout(initChatSSE, 3000); // reconectar en 3s
+    };
 }
 
 function handleNew(msg) {
@@ -3158,7 +3161,8 @@ function handleNew(msg) {
     const div = document.createElement('div');
     div.innerHTML = renderBubble(msg, true);
     container.appendChild(div.firstElementChild);
-    const wasAtBottom = document.getElementById('chat-messages').scrollHeight - document.getElementById('chat-messages').scrollTop < 200;
+    const _cm = document.getElementById('chat-messages');
+    const wasAtBottom = _cm.scrollHeight - _cm.scrollTop - _cm.clientHeight < 200;
     if (wasAtBottom || (ME && msg.username === ME)) scrollBottom();
     markVisible();
 }
@@ -3170,12 +3174,22 @@ function handleEdit(msg) {
 }
 function handleDelete(id) {
     const idx = _allMsgs.findIndex(m=>m.id===id);
-    if (idx!==-1) { _allMsgs[idx].deleted=true; _allMsgs[idx].text=''; }
+    if (idx!==-1) { _allMsgs[idx].deleted=true; _allMsgs[idx].text=''; _allMsgs[idx].image=null; }
     const bub = document.getElementById('bub-'+id);
     if (bub) {
         bub.classList.add('deleted');
+        // Eliminar imagen si la hay
+        const img = bub.querySelector('.bubble-img');
+        if (img) img.remove();
         const txt = bub.querySelector('.bubble-text');
         if (txt) txt.innerHTML = '<i class="fa-solid fa-ban mr-1 text-xs"></i>Mensaje eliminado';
+        else {
+            const body = document.createElement('span');
+            body.className = 'bubble-text';
+            body.style.color = 'rgba(255,255,255,0.3)';
+            body.innerHTML = '<i class="fa-solid fa-ban mr-1 text-xs"></i>Mensaje eliminado';
+            bub.prepend(body);
+        }
         const actions = bub.querySelector('.msg-actions');
         if (actions) actions.remove();
     }
@@ -3196,11 +3210,12 @@ function handleRead(msg_id, username) {
 }
 
 // ─── MARK READ ────────────────────────────────────────
+const _markedRead = new Set(); // evita peticiones duplicadas
 function markVisible() {
     if (!ME) return;
-    // Mark all visible messages as read
-    const unread = _allMsgs.filter(m => !m.deleted && !m.read_by.includes(ME));
+    const unread = _allMsgs.filter(m => !m.deleted && !m.read_by.includes(ME) && !_markedRead.has(m.id));
     unread.forEach(m => {
+        _markedRead.add(m.id);
         fetch('/api/chat/read/'+m.id, {method:'POST'});
     });
 }
@@ -3208,7 +3223,8 @@ function markVisible() {
 // ─── SEND MESSAGE ─────────────────────────────────────
 async function sendMessage() {
     if (!ME) return;
-    const txt   = document.getElementById('chat-input').value.trim();
+    const inputEl = document.getElementById('chat-input');
+    const txt   = inputEl.value.trim();
     const file  = _imgFile;
     if (!txt && !file) return;
 
@@ -3216,11 +3232,22 @@ async function sendMessage() {
     fd.append('text', txt);
     if (file) fd.append('image', file);
 
-    document.getElementById('chat-input').value = '';
-    autoResize(document.getElementById('chat-input'));
+    // Limpiar input optimistamente
+    inputEl.value = '';
+    autoResize(inputEl);
     clearImgPreview();
 
-    await fetch('/api/chat/send', {method:'POST', body:fd});
+    try {
+        const res = await fetch('/api/chat/send', {method:'POST', body:fd});
+        if (!res.ok) {
+            // Restaurar texto si falla
+            inputEl.value = txt;
+            autoResize(inputEl);
+        }
+    } catch(e) {
+        inputEl.value = txt;
+        autoResize(inputEl);
+    }
 }
 
 function handleKey(e) {
@@ -3258,12 +3285,14 @@ function startEdit(id) {
     const txtEl = document.getElementById('txt-'+id);
     if (!txtEl) return;
     txtEl.innerHTML = `
-        <textarea class="edit-input" id="edit-ta-${id}" rows="2">${msg.text}</textarea>
+        <textarea class="edit-input" id="edit-ta-${id}" rows="2"></textarea>
         <div style="display:flex;gap:6px;margin-top:6px">
             <button onclick="submitEdit('${id}')" style="font-size:0.7rem;padding:3px 10px;border-radius:8px;background:rgba(168,85,247,0.3);border:1px solid rgba(168,85,247,0.5);color:#e9d5ff;cursor:pointer">Guardar</button>
             <button onclick="cancelEdit('${id}')" style="font-size:0.7rem;padding:3px 10px;border-radius:8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#9ca3af;cursor:pointer">Cancelar</button>
         </div>`;
-    document.getElementById('edit-ta-'+id)?.focus();
+    // Asignar texto vía .value para evitar inyección HTML
+    const ta = document.getElementById('edit-ta-'+id);
+    if (ta) { ta.value = msg.text; ta.focus(); }
 }
 async function submitEdit(id) {
     const newText = document.getElementById('edit-ta-'+id)?.value.trim();
